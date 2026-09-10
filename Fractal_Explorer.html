@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Fractal Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14120f;
+    --panel-bg: rgba(23, 20, 17, 0.74);
+    --panel-border: rgba(232, 148, 74, 0.28);
+    --ink: #f3efe8;
+    --ink-dim: #9c948a;
+    --amber: #e8944a;
+    --amber-soft: rgba(232, 148, 74, 0.16);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--bg);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+  }
+  canvas#fractal {
+    position: fixed; inset: 0;
+    display: block;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  canvas#fractal.dragging { cursor: grabbing; }
+
+  .brand {
+    position: fixed; top: 20px; left: 22px;
+    display: flex; align-items: center; gap: 10px;
+    z-index: 5;
+    pointer-events: none;
+  }
+  .brand svg { flex: none; opacity: 0.9; }
+  .brand-text {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+  .brand-text .sub {
+    display: block;
+    font-size: 11px;
+    color: var(--ink-dim);
+    font-weight: 400;
+    margin-top: 1px;
+  }
+
+  .readout {
+    position: fixed; top: 20px; right: 22px;
+    z-index: 5;
+    text-align: right;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--ink-dim);
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .readout .lead { color: var(--amber); }
+  .readout .status { color: var(--ink); opacity: 0; transition: opacity 0.2s ease; }
+  .readout .status.show { opacity: 0.85; }
+
+  .hint {
+    position: fixed; bottom: 22px; left: 22px;
+    z-index: 5;
+    font-size: 12px;
+    color: var(--ink-dim);
+    max-width: 260px;
+    line-height: 1.5;
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+
+  .panel {
+    position: fixed; bottom: 22px; right: 22px;
+    z-index: 5;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 240px;
+  }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row.between { justify-content: space-between; }
+
+  .label {
+    font-size: 12px;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+
+  .btn {
+    font-family: inherit;
+    font-size: 12.5px;
+    color: var(--ink);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 9px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.24); }
+  .btn:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+  .btn.primary {
+    background: var(--amber-soft);
+    border-color: rgba(232, 148, 74, 0.5);
+    color: var(--amber);
+  }
+  .btn.primary:hover { background: rgba(232, 148, 74, 0.26); }
+
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--amber);
+    cursor: pointer;
+    box-shadow: 0 0 0 3px rgba(232,148,74,0.2);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border: none;
+    border-radius: 50%;
+    background: var(--amber);
+    cursor: pointer;
+  }
+  input[type="range"]:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  .iter-value {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+    color: var(--amber);
+    width: 40px;
+    text-align: right;
+  }
+
+  .swatches { display: flex; gap: 8px; }
+  .swatch {
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    border: 1.5px solid rgba(255,255,255,0.15);
+    cursor: pointer;
+    padding: 0;
+  }
+  .swatch:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .swatch.active { border-color: var(--ink); box-shadow: 0 0 0 2px rgba(255,255,255,0.15); }
+  .swatch.inferno { background: linear-gradient(135deg, #0a050f, #be3228, #f0821e, #fff3c4); }
+  .swatch.ocean   { background: linear-gradient(135deg, #05101c, #0f5a82, #28a0b4, #ebfafa); }
+  .swatch.classic { background: linear-gradient(135deg, #7b2fe0, #2f8fe0, #2fe0a0, #e0d02f, #e0522f); }
+  .swatch.mono    { background: linear-gradient(135deg, #0c0a08, #5a371a, #c8823c, #faebd2); }
+
+  .julia-banner {
+    display: none;
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+  .julia-banner.show { display: block; }
+  .julia-banner b { color: var(--amber); font-weight: 500; }
+
+  @media (max-width: 640px) {
+    .panel { left: 14px; right: 14px; bottom: 14px; min-width: unset; }
+    .hint { display: none; }
+    .readout { top: 14px; right: 14px; font-size: 10.5px; }
+    .brand { top: 14px; left: 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="fractal"></canvas>
+
+<div class="brand">
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+    <rect x="2" y="2" width="18" height="18" rx="3" stroke="#e8944a" stroke-width="1.4" opacity="0.9"/>
+    <rect x="6" y="6" width="10" height="10" rx="2" stroke="#e8944a" stroke-width="1.2" opacity="0.65" transform="rotate(18 11 11)"/>
+    <rect x="9" y="9" width="4" height="4" rx="1" fill="#e8944a" opacity="0.85"/>
+  </svg>
+  <div class="brand-text">Fractal Explorer<span class="sub" id="modeLabel">Mandelbrot set</span></div>
+</div>
+
+<div class="readout">
+  <div><span class="lead">re</span> <span id="roRe">-0.500000</span></div>
+  <div><span class="lead">im</span> <span id="roIm">0.000000</span></div>
+  <div><span class="lead">zoom</span> <span id="roZoom">1.0×</span></div>
+  <div class="status" id="roStatus">rendering…</div>
+</div>
+
+<div class="hint">Scroll to zoom toward your cursor. Drag to pan. Click anywhere on the Mandelbrot set to open the Julia set for that point.</div>
+
+<div class="panel">
+  <div class="row between julia-banner" id="juliaBanner">
+    <span>Julia set at <b id="juliaCoord">0, 0</b></span>
+  </div>
+  <div class="row between">
+    <span class="label">Iterations</span>
+    <input type="range" id="iterSlider" min="50" max="1000" step="10" value="300">
+    <span class="iter-value" id="iterValue">300</span>
+  </div>
+  <div class="row between">
+    <span class="label">Palette</span>
+    <div class="swatches">
+      <button class="swatch inferno active" data-palette="inferno" aria-label="Inferno palette"></button>
+      <button class="swatch ocean" data-palette="ocean" aria-label="Ocean palette"></button>
+      <button class="swatch classic" data-palette="classic" aria-label="Classic palette"></button>
+      <button class="swatch mono" data-palette="mono" aria-label="Mono palette"></button>
+    </div>
+  </div>
+  <div class="row between">
+    <button class="btn" id="resetBtn">Reset view</button>
+    <button class="btn primary" id="backBtn" style="display:none;">Back to Mandelbrot</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById('fractal');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const workCanvas = document.createElement('canvas');
+  const workCtx = workCanvas.getContext('2d', { alpha: false });
+
+  const roRe = document.getElementById('roRe');
+  const roIm = document.getElementById('roIm');
+  const roZoom = document.getElementById('roZoom');
+  const roStatus = document.getElementById('roStatus');
+  const modeLabel = document.getElementById('modeLabel');
+  const iterSlider = document.getElementById('iterSlider');
+  const iterValue = document.getElementById('iterValue');
+  const resetBtn = document.getElementById('resetBtn');
+  const backBtn = document.getElementById('backBtn');
+  const juliaBanner = document.getElementById('juliaBanner');
+  const juliaCoord = document.getElementById('juliaCoord');
+  const swatches = document.querySelectorAll('.swatch');
+
+  const BG = [20, 18, 15];
+
+  // ---------- palettes ----------
+  const PALETTES = {
+    inferno: [[0,[10,5,15]],[0.3,[142,32,60]],[0.55,[214,72,34]],[0.75,[240,150,35]],[0.9,[250,214,90]],[1,[255,250,224]]],
+    ocean:   [[0,[5,10,25]],[0.3,[10,48,90]],[0.55,[15,102,140]],[0.75,[42,168,186]],[0.9,[150,226,224]],[1,[236,252,250]]],
+    mono:    [[0,[12,10,8]],[0.35,[74,46,22]],[0.65,[176,112,52]],[0.85,[224,176,110]],[1,[250,240,222]]],
+  };
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function gradientColor(stops, t) {
+    t = Math.max(0, Math.min(1, t));
+    for (let i = 0; i < stops.length - 1; i++) {
+      const [p0, c0] = stops[i];
+      const [p1, c1] = stops[i + 1];
+      if (t >= p0 && t <= p1) {
+        const local = p1 === p0 ? 0 : (t - p0) / (p1 - p0);
+        return [
+          lerp(c0[0], c1[0], local),
+          lerp(c0[1], c1[1], local),
+          lerp(c0[2], c1[2], local),
+        ];
+      }
+    }
+    return stops[stops.length - 1][1];
+  }
+
+  function hslToRgb(h, s, l) {
+    h = ((h % 360) + 360) % 360;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = l - c / 2;
+    let r, g, b;
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+  }
+
+  function colorFor(paletteName, mu, maxIter) {
+    if (paletteName === 'classic') {
+      const hue = (mu * 11 + 250) % 360;
+      return hslToRgb(hue, 0.62, 0.5);
+    }
+    const t = Math.pow(Math.min(1, Math.max(0, mu / maxIter)), 0.45);
+    return gradientColor(PALETTES[paletteName], t);
+  }
+
+  // ---------- state ----------
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let mode = 'mandelbrot';
+  let palette = 'inferno';
+  let maxIter = 300;
+  let juliaC = { re: 0, im: 0 };
+  let savedMandelbrotView = null;
+
+  const INITIAL_HALF_HEIGHT = 1.3;
+  let view = { center: { re: -0.5, im: 0 }, scale: 1 };
+
+  let lastRendered = null; // { center, scale, w, h }
+  let renderGeneration = 0;
+  let debounceTimer = null;
+
+  function initialScaleForCanvas() {
+    return (INITIAL_HALF_HEIGHT * 2) / canvas.height;
+  }
+
+  function resizeCanvas() {
+    const w = Math.round(window.innerWidth * dpr);
+    const h = Math.round(window.innerHeight * dpr);
+    canvas.width = w;
+    canvas.height = h;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    workCanvas.width = w;
+    workCanvas.height = h;
+  }
+
+  function pixelToComplex(px, py) {
+    return {
+      re: view.center.re + (px - canvas.width / 2) * view.scale,
+      im: view.center.im + (py - canvas.height / 2) * view.scale,
+    };
+  }
+
+  function fmt(n) {
+    const abs = Math.abs(n);
+    const digits = abs < 0.001 ? 8 : abs < 1 ? 6 : 4;
+    return n.toFixed(digits);
+  }
+
+  function updateReadout() {
+    roRe.textContent = fmt(view.center.re);
+    roIm.textContent = fmt(view.center.im);
+    const zoom = initialScaleForCanvas() / view.scale;
+    roZoom.textContent = (zoom < 1000 ? zoom.toFixed(1) : zoom.toExponential(2)) + '×';
+  }
+
+  function showStatus(text) {
+    roStatus.textContent = text;
+    roStatus.classList.add('show');
+  }
+  function hideStatus() {
+    roStatus.classList.remove('show');
+  }
+
+  // ---------- cheap preview from last full render ----------
+  function drawPreview() {
+    ctx.fillStyle = 'rgb(' + BG.join(',') + ')';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!lastRendered) return;
+
+    const halfW = view.scale * canvas.width / 2;
+    const halfH = view.scale * canvas.height / 2;
+    const topLeftWorld = { re: view.center.re - halfW, im: view.center.im - halfH };
+    const botRightWorld = { re: view.center.re + halfW, im: view.center.im + halfH };
+
+    const toOldPx = (w) => (w.re - lastRendered.center.re) / lastRendered.scale + lastRendered.w / 2;
+    const toOldPy = (w) => (w.im - lastRendered.center.im) / lastRendered.scale + lastRendered.h / 2;
+
+    const sx = toOldPx(topLeftWorld);
+    const sy = toOldPy(topLeftWorld);
+    const sx2 = toOldPx(botRightWorld);
+    const sy2 = toOldPy(botRightWorld);
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(workCanvas, sx, sy, sx2 - sx, sy2 - sy, 0, 0, canvas.width, canvas.height);
+  }
+
+  // ---------- full chunked render ----------
+  function fullRender(instant) {
+    clearTimeout(debounceTimer);
+    renderGeneration++;
+    const gen = renderGeneration;
+    const w = canvas.width, h = canvas.height;
+    const cRe = view.center.re, cIm = view.center.im, scale = view.scale;
+    const iters = maxIter;
+    const jRe = juliaC.re, jIm = juliaC.im;
+    const isJulia = mode === 'julia';
+    const pal = palette;
+
+    const imageData = workCtx.createImageData(w, h);
+    const data = imageData.data;
+
+    showStatus('rendering…');
+
+    let row = 0;
+    const rowsPerChunk = Math.max(1, Math.floor(24000 / Math.max(1, w)));
+
+    function step() {
+      if (gen !== renderGeneration) return; // aborted, a newer render superseded this one
+      const endRow = Math.min(h, row + rowsPerChunk);
+      for (let py = row; py < endRow; py++) {
+        const im0 = cIm + (py - h / 2) * scale;
+        for (let px = 0; px < w; px++) {
+          const re0 = cRe + (px - w / 2) * scale;
+
+          let zr, zi, cr, ci;
+          if (isJulia) {
+            zr = re0; zi = im0; cr = jRe; ci = jIm;
+          } else {
+            zr = 0; zi = 0; cr = re0; ci = im0;
+          }
+
+          let zr2 = zr * zr, zi2 = zi * zi;
+          let n = 0;
+          while (zr2 + zi2 <= 4 && n < iters) {
+            zi = 2 * zr * zi + ci;
+            zr = zr2 - zi2 + cr;
+            zr2 = zr * zr;
+            zi2 = zi * zi;
+            n++;
+          }
+
+          const idx = (py * w + px) * 4;
+          if (n >= iters) {
+            data[idx] = 6; data[idx + 1] = 5; data[idx + 2] = 8; data[idx + 3] = 255;
+          } else {
+            const logZn = Math.log(zr2 + zi2) / 2;
+            const nu = Math.log(logZn / Math.LN2) / Math.LN2;
+            const mu = Math.max(0, n + 1 - nu);
+            const [r, g, b] = colorFor(pal, mu, iters);
+            data[idx] = r; data[idx + 1] = g; data[idx + 2] = b; data[idx + 3] = 255;
+          }
+        }
+      }
+      row = endRow;
+      if (row < h) {
+        setTimeout(step, 0);
+      } else {
+        if (gen !== renderGeneration) return;
+        workCtx.putImageData(imageData, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(workCanvas, 0, 0);
+        lastRendered = { center: { re: cRe, im: cIm }, scale, w, h };
+        hideStatus();
+      }
+    }
+
+    if (instant) {
+      // still chunked (keeps UI responsive) but starts immediately without waiting on debounce
+      step();
+    } else {
+      step();
+    }
+  }
+
+  function scheduleRender() {
+    drawPreview();
+    updateReadout();
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => fullRender(true), 140);
+  }
+
+  // ---------- interaction ----------
+  let dragging = false;
+  let dragMoved = false;
+  let dragStart = null;
+  let dragStartView = null;
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const before = pixelToComplex(px, py);
+    const factor = e.deltaY < 0 ? 0.85 : 1 / 0.85;
+    view.scale *= factor;
+    view.center.re = before.re - (px - canvas.width / 2) * view.scale;
+    view.center.im = before.im - (py - canvas.height / 2) * view.scale;
+    scheduleRender();
+  }, { passive: false });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    dragMoved = false;
+    dragStart = { x: e.clientX, y: e.clientY };
+    dragStartView = { re: view.center.re, im: view.center.im };
+    canvas.classList.add('dragging');
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dxCss = e.clientX - dragStart.x;
+    const dyCss = e.clientY - dragStart.y;
+    if (Math.abs(dxCss) + Math.abs(dyCss) > 3) dragMoved = true;
+    const rect = canvas.getBoundingClientRect();
+    const dxPix = dxCss * (canvas.width / rect.width);
+    const dyPix = dyCss * (canvas.height / rect.height);
+    view.center.re = dragStartView.re - dxPix * view.scale;
+    view.center.im = dragStartView.im - dyPix * view.scale;
+    drawPreview();
+    updateReadout();
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    canvas.classList.remove('dragging');
+    if (dragMoved) {
+      clearTimeout(debounceTimer);
+      fullRender(true);
+    } else {
+      handleClick(e);
+    }
+  });
+
+  function handleClick(e) {
+    const rect = canvas.getBoundingClientRect();
+    const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const point = pixelToComplex(px, py);
+
+    if (mode === 'mandelbrot') {
+      savedMandelbrotView = { center: { re: view.center.re, im: view.center.im }, scale: view.scale };
+      juliaC = point;
+      mode = 'julia';
+      view = { center: { re: 0, im: 0 }, scale: initialScaleForCanvas() };
+      modeLabel.textContent = 'Julia set';
+      backBtn.style.display = '';
+      juliaBanner.classList.add('show');
+      juliaCoord.textContent = fmt(point.re) + ' + ' + fmt(point.im) + 'i';
+      lastRendered = null;
+      clearTimeout(debounceTimer);
+      fullRender(true);
+      updateReadout();
+    }
+  }
+
+  backBtn.addEventListener('click', () => {
+    mode = 'mandelbrot';
+    view = savedMandelbrotView || { center: { re: -0.5, im: 0 }, scale: initialScaleForCanvas() };
+    modeLabel.textContent = 'Mandelbrot set';
+    backBtn.style.display = 'none';
+    juliaBanner.classList.remove('show');
+    lastRendered = null;
+    clearTimeout(debounceTimer);
+    fullRender(true);
+    updateReadout();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    if (mode === 'julia') {
+      view = { center: { re: 0, im: 0 }, scale: initialScaleForCanvas() };
+    } else {
+      view = { center: { re: -0.5, im: 0 }, scale: initialScaleForCanvas() };
+    }
+    lastRendered = null;
+    clearTimeout(debounceTimer);
+    fullRender(true);
+    updateReadout();
+  });
+
+  iterSlider.addEventListener('input', () => {
+    maxIter = parseInt(iterSlider.value, 10);
+    iterValue.textContent = maxIter;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => fullRender(true), 120);
+  });
+
+  swatches.forEach((sw) => {
+    sw.addEventListener('click', () => {
+      swatches.forEach((s) => s.classList.remove('active'));
+      sw.classList.add('active');
+      palette = sw.dataset.palette;
+      clearTimeout(debounceTimer);
+      fullRender(true);
+    });
+  });
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeCanvas();
+      lastRendered = null;
+      fullRender(true);
+      updateReadout();
+    }, 180);
+  });
+
+  // ---------- init ----------
+  resizeCanvas();
+  view.scale = initialScaleForCanvas();
+  updateReadout();
+  fullRender(true);
+})();
+</script>
+</body>
+</html>
